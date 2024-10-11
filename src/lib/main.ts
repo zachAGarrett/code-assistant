@@ -6,6 +6,7 @@ import {
   createThread,
   getResponse,
   findOrCreateAssistant,
+  outputCodeBlocks,
 } from "./assistant/openaiAssistantThreadManagementUtils.js";
 import maintainVirtualDirectory from "./fileManager/maintainVirtualDirectory/index.js";
 import path from "path";
@@ -72,15 +73,20 @@ export async function runAssistantCLI(configFilePath: string): Promise<void> {
           }
 
           if (question === "$purge") {
-            await purgeFiles({ openai, vectorStoreId });
-            console.log(chalk.green("All files purged successfully."));
+            await purgeFiles({ openai, vectorStoreId }).then((count) =>
+              console.log(chalk.green(`${count} files purged successfully.`))
+            );
+            
           } else if (question === "$sync") {
             await syncFiles({
               openai,
               vectorStoreId,
               globPattern: path.join(flatDir, config.fileSync.globPattern),
-            });
-            console.log(chalk.green("Files synchronized successfully."));
+            }).then((count) =>
+              console.log(
+                chalk.green(`${count} files synchronized successfully.`)
+              )
+            );
           } else {
             const response = await getResponse({
               openai,
@@ -90,8 +96,19 @@ export async function runAssistantCLI(configFilePath: string): Promise<void> {
             });
             const lastMessage = response.content[0];
             const lastMessageContent =
-              lastMessage.type === "text" && lastMessage.text.value;
+              lastMessage.type === "text" ? lastMessage.text.value : undefined;
             console.log(chalk.magenta(lastMessageContent));
+
+            if (
+              config.assistant.generateFiles !== undefined &&
+              config.assistant.generateFiles !== false
+            ) {
+              await outputCodeBlocks({
+                outDir: config.assistant.generateFiles.outDir,
+                lastMessageContent,
+                runId: response.run_id,
+              });
+            }
           }
         } catch (error) {
           console.error(chalk.red("An error occurred: "), error);

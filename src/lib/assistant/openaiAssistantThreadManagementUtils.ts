@@ -5,6 +5,7 @@ import {
   countFilesInDirectory,
   ensureDirectoryExists,
 } from "../fileManager/manageFlatDirectory.js";
+import { startLoadingAnimation, stopLoadingAnimation } from "./cliUtils.js";
 
 export async function findOrCreateAssistant(
   openai: OpenAI,
@@ -90,6 +91,7 @@ export async function getResponse({
   question,
   assistantId,
 }: GetResponseParams) {
+  startLoadingAnimation("Generating response");
   await openai.beta.threads.messages.create(threadId, {
     role: "user",
     content: question,
@@ -101,12 +103,14 @@ export async function getResponse({
     assistantId,
   });
 
+  // Stop loading animation once the operation is complete
+  stopLoadingAnimation();
   const messagesPage = await openai.beta.threads.messages.list(threadId);
   const response = messagesPage.data[0];
   return response;
 }
 
-export function getFileExtensionFromType(fileType: string): string | null {
+export function getFileExtensionFromType(fileType: string) {
   // Map of MIME types to their corresponding extensions
   const typeToExtension: Record<string, string> = {
     "x-c": ".c",
@@ -130,22 +134,18 @@ export function getFileExtensionFromType(fileType: string): string | null {
     "x-tex": ".tex",
     typescript: ".ts",
     plain: ".txt",
+    plaintext: ".txt",
   };
 
-  // Return the corresponding file extension or null if not found
-  return typeToExtension[fileType] || null;
+  // Return the corresponding file extension or .txt if not found
+  return typeToExtension[fileType] || ".txt";
 }
 
 export function getFileExtensionFromOpenAICodeBlock(openAICodeBlock: string) {
   const lines = openAICodeBlock.split("\n");
 
   if (lines.length >= 1) {
-    const fileExtension = getFileExtensionFromType(lines[0]);
-    if (fileExtension === null) {
-      throw `Could not find a matching file type for "${lines[0]}"`;
-    } else {
-      return fileExtension;
-    }
+    return getFileExtensionFromType(lines[0]);
   } else {
     throw "Code block did not have any lines";
   }
@@ -166,21 +166,23 @@ export async function outputCodeBlocks({
   const codeBlocks =
     lastMessageContent && extractCodeBlocks(lastMessageContent);
 
-  console.log(codeBlocks);
-
   Array.isArray(codeBlocks) &&
     (await Promise.all(
       codeBlocks.map(async (code, i) => {
-        await ensureDirectoryExists(absoluteOutDir);
-        const filesInOutDir = await countFilesInDirectory(absoluteOutDir);
-        const fileExtension = getFileExtensionFromOpenAICodeBlock(code);
-        const targetPath = path.join(
-          absoluteOutDir,
-          `generated--${filesInOutDir}--${runId}--${i}.${fileExtension}`
-        );
+        try {
+          await ensureDirectoryExists(absoluteOutDir);
+          const filesInOutDir = await countFilesInDirectory(absoluteOutDir);
+          const fileExtension = getFileExtensionFromOpenAICodeBlock(code);
+          const targetPath = path.join(
+            absoluteOutDir,
+            `generated--${filesInOutDir}--${runId}--${i}.${fileExtension}`
+          );
 
-        // create the file with the code block, less the file type declaration
-        await fs.writeFile(targetPath, code.split("\n").slice(1));
+          // create the file with the code block, less the file type declaration
+          await fs.writeFile(targetPath, code.split("\n").slice(1).join("\n"));
+        } catch (error) {
+          console.log(`Failed to output codeblock as a file.`, error);
+        }
       })
     ));
 }

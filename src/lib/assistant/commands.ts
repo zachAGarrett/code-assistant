@@ -12,6 +12,7 @@ import {
   uploadFileAndAddToVectoreStore,
 } from "../fileManager/openaiVectorSyncingUtils.js";
 import chalk from "chalk";
+import { startLoadingAnimation, stopLoadingAnimation } from "./cliUtils.js";
 
 export interface PurgeFilesProps {
   openai: OpenAI;
@@ -19,13 +20,22 @@ export interface PurgeFilesProps {
 }
 export async function purgeFiles({ openai, vectorStoreId }: PurgeFilesProps) {
   const limit = pLimit(5); // Limit to 5 concurrent requests
+  startLoadingAnimation(`Looking for files to purge...`);
   const storedFiles = await listOpenAIFiles({ openai });
-  const purgeRes = await Promise.all(
-    storedFiles.map(({ id }) =>
-      limit(() => purgeFileFromOpenAI({ openai, vectorStoreId, fileId: id }))
-    )
-  );
-  console.log(purgeRes.length + " files were deleted.");
+  stopLoadingAnimation();
+
+  if (storedFiles.length > 0) {
+    startLoadingAnimation(`Deleting ${storedFiles.length} project files...`);
+    const purgeRes = await Promise.all(
+      storedFiles.map(({ id }) =>
+        limit(() => purgeFileFromOpenAI({ openai, vectorStoreId, fileId: id }))
+      )
+    );
+    stopLoadingAnimation();
+    return purgeRes.length;
+  } else {
+    return 0;
+  }
 }
 
 export interface SyncFilesProps {
@@ -40,44 +50,53 @@ export async function syncFiles({
 }: SyncFilesProps) {
   const limit = pLimit(5); // Limit to 5 concurrent requests
 
+  startLoadingAnimation("Looking for files to sync.");
   // Initial sync: find all files in the temp directory that match the glob pattern
   const matchedFiles = await glob(globPattern);
+  stopLoadingAnimation();
 
-  // Process each file found during initial sync
-  console.log(`Ensuring ${matchedFiles.length} project files are synced...`);
-  await Promise.all(
-    matchedFiles.map((filePath) =>
-      limit(async () => {
-        const filename = path.basename(filePath);
+  if (matchedFiles.length > 0) {
+    // Process each file found during initial sync
+    startLoadingAnimation(
+      `Ensuring ${matchedFiles.length} project files are synced...`
+    );
+    await Promise.all(
+      matchedFiles.map((filePath) =>
+        limit(async () => {
+          const filename = path.basename(filePath);
 
-        // Check if the file already exists in OpenAI
-        const existingFile = await findFileInOpenAIByFilename({
-          openai,
-          filename,
-        });
-
-        // If the file does not exist, upload it to OpenAI and add to the vector store
-        if (!existingFile) {
-          await uploadFileAndAddToVectoreStore({
+          // Check if the file already exists in OpenAI
+          const existingFile = await findFileInOpenAIByFilename({
             openai,
-            vectorStoreId,
-            filePath,
-          })
-            .then((_) => console.log(`${filename} successfully synced.`))
-            .catch((err) =>
-              console.log(`${filename} could not be synced.`, err)
-            );
-        } else {
-          await syncFileIfMissingFromVectorStore({
-            openai,
-            vectorStoreId,
-            fileId: existingFile.id,
+            filename,
           });
-        }
-      })
-    )
-  );
-  console.log(`Successfully synced ${matchedFiles.length} project files.`);
+
+          // If the file does not exist, upload it to OpenAI and add to the vector store
+          if (!existingFile) {
+            await uploadFileAndAddToVectoreStore({
+              openai,
+              vectorStoreId,
+              filePath,
+            })
+              .then((_) => console.log(`${filename} successfully synced.`))
+              .catch((err) =>
+                console.log(`${filename} could not be synced.`, err)
+              );
+          } else {
+            await syncFileIfMissingFromVectorStore({
+              openai,
+              vectorStoreId,
+              fileId: existingFile.id,
+            });
+          }
+        })
+      )
+    );
+    stopLoadingAnimation();
+    return matchedFiles.length;
+  } else {
+    return 0;
+  }
 }
 
 export function help() {
