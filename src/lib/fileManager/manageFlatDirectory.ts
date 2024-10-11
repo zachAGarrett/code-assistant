@@ -1,9 +1,9 @@
-import { promises as fs } from "fs";
+import { promises as fs, statSync } from "fs";
 import path from "path";
 import { glob } from "glob";
 import watch from "glob-watcher";
 
-async function ensureDirectoryExists(dirPath: string) {
+export async function ensureDirectoryExists(dirPath: string) {
   try {
     await fs.mkdir(dirPath, { recursive: true });
   } catch (error) {
@@ -22,11 +22,15 @@ function flattenFilePath(filePath: string, baseDir: string) {
 /**
  * Creates a subdirectory based on the target directory's absolute path in the base directory
  */
-async function createSubdirectoryForTarget(targetDir: string) {
+export async function createSubdirectoryForSourceInTarget(
+  targetDir: string,
+  sourceDir: string
+) {
   const absoluteTargetDir = path.resolve(targetDir);
   const subdirectory = path.join(
     path.dirname(absoluteTargetDir),
-    path.basename(absoluteTargetDir)
+    path.basename(absoluteTargetDir),
+    path.resolve(sourceDir).split(path.sep).join("--")
   );
 
   await ensureDirectoryExists(subdirectory);
@@ -84,29 +88,46 @@ export default async function manageFlatDirectory(
   targetDir: string,
   globPattern: string
 ) {
-  const newTargetDir = await createSubdirectoryForTarget(targetDir);
-
   // First, copy all existing files into the newly created subdirectory
   const fullGlobPattern = path.join(sourceDir, globPattern).replace(/\\/g, "/");
   const files = glob.sync(fullGlobPattern);
 
   // Copy each file
-  await Promise.all(
-    files.map((file) => copyFile(file, newTargetDir, sourceDir))
-  );
+  await Promise.all(files.map((file) => copyFile(file, targetDir, sourceDir)));
 
   // Use glob-watcher to watch the provided pattern
   const watcher = watch(fullGlobPattern);
 
   watcher.on("add", (filePath: string) => {
-    copyFile(filePath, newTargetDir, sourceDir);
+    copyFile(filePath, targetDir, sourceDir);
   });
 
   watcher.on("change", (filePath: string) => {
-    copyFile(filePath, newTargetDir, sourceDir);
+    copyFile(filePath, targetDir, sourceDir);
   });
 
   watcher.on("unlink", (filePath: string) => {
-    deleteFile(filePath, newTargetDir, sourceDir);
+    deleteFile(filePath, targetDir, sourceDir);
   });
+}
+
+// Function to count files in a directory
+export async function countFilesInDirectory(
+  directoryPath: string
+): Promise<number> {
+  try {
+    // Read the contents of the directory
+    const files = await fs.readdir(directoryPath);
+
+    // Filter out directories and count only files
+    const fileCount = files.filter((file) => {
+      const fullPath = path.join(directoryPath, file);
+      return statSync(fullPath).isFile();
+    }).length;
+
+    return fileCount;
+  } catch (error) {
+    console.error("Error reading directory:", (error as any).message);
+    return 0; // Return 0 or handle error appropriately
+  }
 }

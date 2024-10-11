@@ -46,18 +46,20 @@ def data_processor(data):
 - Utilize industry best practices for error handling and performance optimization where relevant.
 `;
 
-export interface AssistantConfig {
-  name: string;
-  description: string;
-  instructions: string;
-  model: OpenAI.ChatModel;
-}
-
-const assistantConfig: AssistantConfig = {
-  name: "programming assistant",
-  description: "Expert programming assistant",
-  instructions: defaultAssistantInstructions,
-  model: "gpt-4o",
+const defaultConfig = {
+  assistant: {
+    name: "programming assistant",
+    description: "Expert programming assistant",
+    instructions: defaultAssistantInstructions,
+    model: "gpt-4o" as OpenAI.ChatModel,
+    generateFiles: false as false,
+  },
+  fileSync: {
+    globPattern:
+      "**/*.{c,cpp,cs,css,doc,docx,go,html,java,js,json,md,pdf,php,pptx,py,rb,sh,tex,ts,txt}",
+  },
 };
 
-export default assistantConfig;
+export type DefaultConfig = typeof defaultConfig;
+
+export default defaultConfig;

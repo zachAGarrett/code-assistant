@@ -1,4 +1,8 @@
 import OpenAI from "openai";
+import {
+  deleteFileFromOpenAI,
+  uploadFileToOpenAI,
+} from "./openaiFileSyncingUtils.js";
 
 // Add a file to an existing vector store in OpenAI by its ID
 export interface AddFileToVectorStoreParams {
@@ -71,5 +75,81 @@ export async function findOrCreateVectorStore({
     return await openai.beta.vectorStores.create({ name: vectorStoreName });
   } catch (error: any) {
     console.error(`Error instantiating vector store: ${error.message}`);
+  }
+}
+
+export interface UploadFileAndAddToVectoreStoreParams {
+  openai: OpenAI;
+  vectorStoreId: string;
+  filePath: string;
+}
+export async function uploadFileAndAddToVectoreStore({
+  openai,
+  filePath,
+  vectorStoreId,
+}: UploadFileAndAddToVectoreStoreParams) {
+  const fileId = await uploadFileToOpenAI({
+    filePath,
+    purpose: "assistants",
+    openai,
+  });
+  if (fileId) {
+    await addFileToVectorStore({
+      openai,
+      vectorStoreId,
+      fileId,
+    });
+  }
+}
+
+export interface SyncFileIfMissingFromVectorStoreParams {
+  vectorStoreId: string;
+  openai: OpenAI;
+  fileId: string;
+}
+export async function syncFileIfMissingFromVectorStore({
+  vectorStoreId,
+  openai,
+  fileId,
+}: SyncFileIfMissingFromVectorStoreParams) {
+  // Check if the file is already in the vector store
+  const vectorStoreFiles = await listVectorStoreFiles({
+    vectorStoreId,
+    openai,
+  });
+  if (!vectorStoreFiles.data.some(({ id }) => id === fileId)) {
+    await addFileToVectorStore({
+      vectorStoreId,
+      fileId,
+      openai,
+    });
+  }
+}
+
+export interface PurgeFileFromOpenAIParams {
+  vectorStoreId: string;
+  openai: OpenAI;
+  fileId: string;
+}
+export async function purgeFileFromOpenAI({
+  vectorStoreId,
+  openai,
+  fileId,
+}: PurgeFileFromOpenAIParams) {
+  await deleteFileFromOpenAI({ fileId: fileId, openai });
+
+  const vectorStoreFiles = await listVectorStoreFiles({
+    vectorStoreId,
+    openai,
+  });
+  if (vectorStoreFiles.data.some(({ id }) => id === fileId)) {
+    await deleteVectorStoreFile({
+      vectorStoreId,
+      fileId,
+      openai,
+    }).catch(
+      (err: OpenAI.ErrorObject) =>
+        err.code === "404" && console.log("file not found in vector store")
+    );
   }
 }

@@ -16,7 +16,8 @@
     "outDir": "build",
     "declaration": true,
     "declarationDir": "build/types",
-    "preserveConstEnums": true
+    "preserveConstEnums": true,
+    "noUnusedParameters": true
   },
   "include": ["./src/**/*.ts"],
   "exclude": ["node_modules"]
