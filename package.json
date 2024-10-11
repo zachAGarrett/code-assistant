@@ -1,0 +1,33 @@
+{
+  "name": "tkn",
+  "version": "1.0.0",
+  "description": "",
+  "author": "Zach Garrett",
+  "license": "ISC",
+  "main": "build/index.js",
+  "types": "build/types/index.d.ts",
+  "bin": {
+    "tkn-cli": "./build/bin/cli.js"
+  },
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "clean": "rm -rf build",
+    "build": "npm run clean && tsc",
+    "start": "node build/index.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "glob": "^11.0.0",
+    "glob-watcher": "^6.0.0",
+    "lodash.merge": "^4.6.2",
+    "openai": "^4.67.3",
+    "p-limit": "^6.1.0"
+  },
+  "devDependencies": {
+    "@types/glob-watcher": "^5.0.5",
+    "@types/html-to-text": "^9.0.4",
+    "@types/node": "^22.7.4",
+    "typescript": "^5.6.2"
+  }
+}
