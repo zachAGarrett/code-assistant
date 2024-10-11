@@ -40,12 +40,16 @@ Follow the steps below to clone the repository and install the CLI tool:
    Run the following command to install necessary packages:
    `npm install`
 
-4. **Set Up Your OpenAI API Environment Variables (.env)**:
+4. **Build the repo**:
+   Run the following command to install necessary packages:
+   `npm run build`
+
+5. **Set Up Your OpenAI API Environment Variables (.env)**:
    OPENAI_API_KEY
    OPENAI_ORG_ID
    OPENAI_PROJECT_ID
 
-5. **Set Up Your Config file (assistant-config.json)**:
+6. **Set Up Your Config file (assistant-config.json)**:
    {
    "fileSync": {
    "sourceDir": "./src",
@@ -53,7 +57,7 @@ Follow the steps below to clone the repository and install the CLI tool:
    }
    }
 
-6. **Install the CLI Tool Globally** (Optional):
+7. **Install the CLI Tool Globally** (Optional):
    If you wish to use the CLI globally, install it by running:
    `npm link && chmod +x ./build/bin/cli.js`
 
