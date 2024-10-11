@@ -1,129 +1,106 @@
 import OpenAI from "openai";
 import { createInterface } from "readline";
 import dotenv from "dotenv";
+import chalk from "chalk";
 import {
   createThread,
-  extractCodeBlocks,
-  findOrCreateAssistant,
-  getFileExtensionFromOpenAICodeBlock,
-  getFileExtensionFromType,
   getResponse,
-  outputCodeBlocks,
+  findOrCreateAssistant,
 } from "./assistant/openaiAssistantThreadManagementUtils.js";
 import maintainVirtualDirectory from "./fileManager/maintainVirtualDirectory/index.js";
-import { purgeFiles, syncFiles } from "./assistant/commands.js";
+import path from "path";
 import getConfig from "./assistant/getConfig.js";
 import manageFlatDirectory, {
-  countFilesInDirectory,
   createSubdirectoryForSourceInTarget,
-  ensureDirectoryExists,
 } from "./fileManager/manageFlatDirectory.js";
-import { promises as fs } from "fs";
-import path from "path";
+import { help, purgeFiles, syncFiles } from "./assistant/commands.js";
 import { fileURLToPath } from "url";
 
 // Convert `import.meta.url` to a usable directory path
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Load environment variables
 dotenv.config();
 
-// The main assistant logic encapsulated in a function
+// Main CLI function
 export async function runAssistantCLI(configFilePath: string): Promise<void> {
-  // Get configuration
   const config = await getConfig(configFilePath);
-  const openaiConfig = {
+  const openai = new OpenAI({
     apiKey: process.env.apiKey,
     organization: process.env.organization,
     project: process.env.project,
-  };
+  });
 
-  const openai = new OpenAI(openaiConfig);
-
+  // Setup the file watching and openAI integrations
   const flatDir = await createSubdirectoryForSourceInTarget(
     __dirname + "/files",
     config.fileSync.sourceDir
   );
-
-  // Start the source watcher
   await manageFlatDirectory(
     config.fileSync.sourceDir,
     flatDir,
     config.fileSync.globPattern
   );
-
-  const fullGlobPattern = path
-    .join(flatDir, config.fileSync.globPattern)
-    .replace(/\\/g, "/");
-  // Initialize synchronization and vector store from config
   const { vectorStoreId } = await maintainVirtualDirectory({
     openai,
     sourceDir: config.fileSync.sourceDir,
-    globPattern: fullGlobPattern,
+    globPattern: path
+      .join(flatDir, config.fileSync.globPattern)
+      .replace(/\\/g, "/"),
   });
 
-  // Setup the assistant using the config
-  const assistant = await findOrCreateAssistant(openai, {
-    name: config.assistant.name,
-    description: config.assistant.description,
-    instructions: config.assistant.instructions,
-    model: config.assistant.model,
-    tools: [{ type: "file_search" }],
-  });
-
-  // Create a conversation thread
+  // Initialize assistant
+  const assistant = await findOrCreateAssistant(openai, config.assistant);
   const thread = await createThread(openai, {
     tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } },
   });
 
-  // Setup readline interface for user input
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
 
-  // Function to handle command prompt interaction
+  // Prompting the user with enhanced styling
   function promptQuestion(): void {
-    rl.question("> ", async (question: string) => {
-      try {
-        if (question === "$purge") {
-          await purgeFiles({ openai, vectorStoreId });
-        } else if (question === "$sync") {
-          await syncFiles({
-            openai,
-            vectorStoreId: vectorStoreId,
-            globPattern: fullGlobPattern,
-          });
-        } else {
-          const response = await getResponse({
-            openai,
-            threadId: thread.id,
-            question,
-            assistantId: assistant.id,
-          });
-          const lastMessage = response.content[0];
-          const lastMessageContent =
-            lastMessage.type === "text" ? lastMessage.text.value : undefined;
-          console.log(lastMessageContent);
-
-          if (
-            config.assistant.generateFiles !== undefined &&
-            config.assistant.generateFiles !== false
-          ) {
-            await outputCodeBlocks({
-              outDir: config.assistant.generateFiles.outDir,
-              lastMessageContent,
-              runId: response.run_id,
-            });
+    rl.question(
+      chalk.blue(">>> ") +
+        chalk.yellow("Ask your question or type `$help` to see commands: "),
+      async (question: string) => {
+        try {
+          if (question === "$help") {
+            help();
+            promptQuestion();
+            return;
           }
+
+          if (question === "$purge") {
+            await purgeFiles({ openai, vectorStoreId });
+            console.log(chalk.green("All files purged successfully."));
+          } else if (question === "$sync") {
+            await syncFiles({
+              openai,
+              vectorStoreId,
+              globPattern: path.join(flatDir, config.fileSync.globPattern),
+            });
+            console.log(chalk.green("Files synchronized successfully."));
+          } else {
+            const response = await getResponse({
+              openai,
+              threadId: thread.id,
+              question,
+              assistantId: assistant.id,
+            });
+            const lastMessage = response.content[0];
+            const lastMessageContent =
+              lastMessage.type === "text" && lastMessage.text.value;
+            console.log(chalk.magenta(lastMessageContent));
+          }
+        } catch (error) {
+          console.error(chalk.red("An error occurred: "), error);
+        } finally {
+          promptQuestion();
         }
-      } catch (error) {
-        console.error("An error occurred: ", error);
-      } finally {
-        promptQuestion();
       }
-    });
+    );
   }
 
-  // Begin prompting the user for questions
-  promptQuestion();
+  promptQuestion(); // Start the interaction
 }

@@ -17,6 +17,7 @@
     "start": "node build/index.js"
   },
   "dependencies": {
+    "chalk": "^5.3.0",
     "dotenv": "^16.4.5",
     "glob": "^11.0.0",
     "glob-watcher": "^6.0.0",

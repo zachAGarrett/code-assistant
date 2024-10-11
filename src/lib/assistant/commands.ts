@@ -11,6 +11,7 @@ import {
   syncFileIfMissingFromVectorStore,
   uploadFileAndAddToVectoreStore,
 } from "../fileManager/openaiVectorSyncingUtils.js";
+import chalk from "chalk";
 
 export interface PurgeFilesProps {
   openai: OpenAI;
@@ -77,4 +78,16 @@ export async function syncFiles({
     )
   );
   console.log(`Successfully synced ${matchedFiles.length} project files.`);
+}
+
+export function help() {
+  console.log(chalk.green("Available commands:"));
+  console.log(chalk.cyan("$purge - Purge all stored files from OpenAI."));
+  console.log(chalk.cyan("$sync - Sync files with OpenAI."));
+  console.log(
+    chalk.cyan(
+      "Any other input will be processed as a question to the assistant."
+    )
+  );
+  return;
 }
