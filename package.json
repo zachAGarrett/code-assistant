@@ -1,5 +1,5 @@
 {
-  "name": "tkn",
+  "name": "para-programmer",
   "version": "1.0.0",
   "description": "",
   "author": "Zach Garrett",
@@ -7,13 +7,13 @@
   "main": "build/index.js",
   "types": "build/types/index.d.ts",
   "bin": {
-    "tkn-cli": "./build/bin/cli.js"
+    "para": "./build/bin/cli.js"
   },
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "clean": "rm -rf build",
-    "build": "npm run clean && tsc && chmod +x ./build/bin/cli.js",
+    "build": "npm run clean && tsc && npm link && chmod +x ./build/bin/cli.js",
     "start": "node build/index.js"
   },
   "dependencies": {

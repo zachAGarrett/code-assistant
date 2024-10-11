@@ -63,4 +63,4 @@ Follow the steps below to clone the repository and install the CLI tool:
 
 ## Usage
 
-`tkn-cli`
+`para`
