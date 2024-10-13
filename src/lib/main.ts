@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import chalk from "chalk";
 import {
   createThread,
-  getResponse,
+  getResponseMessages,
   findOrCreateAssistant,
   outputCodeBlocks,
 } from "./assistant/openaiAssistantThreadManagementUtils.js";
@@ -115,15 +115,20 @@ export async function runAssistantCLI(configFilePath: string): Promise<void> {
               )
             );
           } else {
-            const response = await getResponse({
+            const response = await getResponseMessages({
               openai,
               threadId: thread.id,
               question,
               assistantId: assistant.id,
             });
 
-            response.content[0].type === "text" &&
-              console.log(chalk.magenta("\n" + response.content[0].text.value));
+            const responseMessageContent = response[0].content[0];
+            const userMessageContent = response[1].content[0];
+
+            responseMessageContent.type === "text" &&
+              console.log(
+                chalk.magenta("\n" + responseMessageContent.text.value)
+              );
 
             if (
               config.assistant.generateFiles !== undefined &&
@@ -131,7 +136,8 @@ export async function runAssistantCLI(configFilePath: string): Promise<void> {
             ) {
               await outputCodeBlocks({
                 outDir: config.assistant.generateFiles.outDir,
-                response,
+                userMessageContent: userMessageContent,
+                responseContent: responseMessageContent,
                 openai,
               });
             }

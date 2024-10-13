@@ -52,4 +52,5 @@ Adhere to the following instructions when writing the response:
 1. Write the path of the file where this code should live in the codebase relative to the root directory on the first line.
 2. The file path should include the file extension, which may be any of c, cpp, cs, css, doc, docx, go, html, java, js, json, md, pdf, php, pptx, py, rb, sh, tex, ts, txt.
 3. The remainer of the message should include the complete functional code. No description or explanation of the code is necessary except as in line comments.
+4. The functional code should contain the complete code necessary for running the program. Do not abbreviate or omit any code sections. I should be able to run the checked code without modification.
 `;

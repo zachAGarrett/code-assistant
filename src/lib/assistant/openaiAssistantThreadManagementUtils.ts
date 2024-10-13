@@ -95,7 +95,7 @@ export interface GetResponseParams {
   question: string;
   assistantId: string;
 }
-export async function getResponse({
+export async function getResponseMessages({
   openai,
   threadId,
   question,
@@ -114,24 +114,30 @@ export async function getResponse({
     });
   }, chalk.blueBright("\nWorking on it"));
   const messagesPage = await openai.beta.threads.messages.list(threadId);
-  const response = messagesPage.data[0];
-  return response;
+  const messages = messagesPage.data;
+  return messages;
 }
 
 export interface OutputCodeBlocksParams {
   outDir: string;
-  response: OpenAI.Beta.Threads.Messages.Message;
+  userMessageContent: OpenAI.Beta.Threads.Messages.MessageContent;
+  responseContent: OpenAI.Beta.Threads.Messages.MessageContent;
   openai: OpenAI;
 }
 export async function outputCodeBlocks({
   outDir,
-  response,
+  responseContent,
+  userMessageContent,
   openai,
 }: OutputCodeBlocksParams) {
   const absoluteOutDir = path.resolve(outDir);
 
   const responseText =
-    response.content[0].type === "text" ? response.content[0].text : undefined;
+    responseContent.type === "text" ? responseContent.text : undefined;
+  const userMessageText =
+    userMessageContent.type === "text"
+      ? userMessageContent.text.value
+      : undefined;
 
   const codeBlocks =
     responseText?.value && extractCodeBlocks(responseText?.value);
@@ -142,10 +148,11 @@ export async function outputCodeBlocks({
         await Promise.all(
           codeBlocks.map(async (code) => {
             const validationResponse = (
-              await validateCodeBlock({
+              await validateCode({
                 openai,
                 annotations: responseText?.annotations,
                 code,
+                originalInstructions: userMessageText,
               })
             )?.choices[0].message.content;
 
@@ -199,7 +206,7 @@ export async function outputCodeBlocks({
       );
 
       await Promise.all(writeFilePromises);
-    }, chalk.blue(`\nValidating ${codeBlocks.length} code blocks`));
+    }, chalk.blue(`\nValidating code`));
   }
 }
 
@@ -208,16 +215,18 @@ export interface ValidatedCodeObject {
   code: string;
 }
 
-export interface ValidateCodeBlockProps {
+export interface ValidateCodeProps {
   code: string;
   annotations?: OpenAI.Beta.Threads.Messages.Annotation[];
   openai: OpenAI;
+  originalInstructions?: string;
 }
-export async function validateCodeBlock({
+export async function validateCode({
   openai,
   annotations,
   code,
-}: ValidateCodeBlockProps) {
+  originalInstructions,
+}: ValidateCodeProps) {
   const citedContent =
     annotations &&
     (await Promise.all(
@@ -247,7 +256,13 @@ export async function validateCodeBlock({
     },
     {
       role: "assistant",
-      content: `Here's the code for review: \`\`\`\n${code}\`\`\``,
+      content: `Here's the code for review: \`\`\`\n${code}\`\`\`
+      
+      ${
+        originalInstructions === undefined
+          ? ""
+          : `The instructions given for this code were: \n${originalInstructions}`
+      }`,
     },
     ...(referencedFileContextMessages || []),
   ];
