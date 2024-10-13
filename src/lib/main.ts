@@ -10,7 +10,7 @@ import {
 } from "./assistant/openaiAssistantThreadManagementUtils.js";
 import maintainVirtualDirectory from "./fileManager/maintainVirtualDirectory/index.js";
 import path from "path";
-import getConfig from "./assistant/getConfig.js";
+import getParaConfig from "./config/getParaConfig.js";
 import manageFlatDirectory, {
   ensureInstanceSubdirectory,
 } from "./fileManager/manageFlatDirectory.js";
@@ -22,6 +22,7 @@ import {
 } from "./assistant/cliUtils.js";
 import { assetsDir } from "./fileManager/maintainVirtualDirectory/fileMap.js";
 import fs from "fs";
+import { setGlobalConfig } from "./config/fileWatcher.js";
 
 // Load environment variables
 dotenv.config();
@@ -33,10 +34,10 @@ export async function runAssistantCLI(configFilePath: string): Promise<void> {
     organization: process.env.organization,
     project: process.env.project,
   });
-  const config = getConfig(configFilePath);
+  const config = getParaConfig(configFilePath);
 
   const timeout = startLoadingAnimation(
-    chalk.blue("Virtualizing watched files")
+    chalk.blue("\nVirtualizing watched files")
   );
 
   const { instanceBaseDirectory, instanceTrackedDirectory } =
@@ -44,6 +45,14 @@ export async function runAssistantCLI(configFilePath: string): Promise<void> {
 
   // Define the path for the persistent store (JSON file) in the bin directory
   const mappingFilePath = path.join(instanceBaseDirectory, "/fileMap.json");
+
+  // Set global configuration
+  setGlobalConfig(
+    instanceBaseDirectory,
+    instanceTrackedDirectory,
+    mappingFilePath,
+    config
+  );
 
   // Initialize store with an empty object if it doesn't exist
   if (!fs.existsSync(mappingFilePath)) {
@@ -61,7 +70,6 @@ export async function runAssistantCLI(configFilePath: string): Promise<void> {
     globPattern: path
       .join(instanceTrackedDirectory, config.fileSync.globPattern)
       .replace(/\\/g, "/"),
-    mappingFilePath,
   });
   stopLoadingAnimation(timeout);
 
@@ -72,7 +80,7 @@ export async function runAssistantCLI(configFilePath: string): Promise<void> {
     });
 
     return { assistant, thread };
-  }, chalk.blue("Setting up your assistant"));
+  }, chalk.blue("\nSetting up your assistant"));
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
 
@@ -80,7 +88,7 @@ export async function runAssistantCLI(configFilePath: string): Promise<void> {
   function promptQuestion(): void {
     rl.question(
       chalk.blue(">>> ") +
-        chalk.yellow("Ask your question or type `$help` to see commands: "),
+        chalk.yellow("\nAsk your question or type `$help` to see commands: "),
       async (question: string) => {
         try {
           if (question === "$help") {
@@ -90,9 +98,8 @@ export async function runAssistantCLI(configFilePath: string): Promise<void> {
           }
 
           if (question === "$purge") {
-            await purgeFiles({ openai, vectorStoreId, mappingFilePath }).then(
-              (count) =>
-                console.log(chalk.blue(`\n${count} files purged successfully.`))
+            await purgeFiles({ openai, vectorStoreId }).then((count) =>
+              console.log(chalk.blue(`\n${count} files purged successfully.`))
             );
           } else if (question === "$sync") {
             await syncFiles({
@@ -102,14 +109,13 @@ export async function runAssistantCLI(configFilePath: string): Promise<void> {
                 instanceTrackedDirectory,
                 config.fileSync.globPattern
               ),
-              mappingFilePath,
             }).then((count) =>
               console.log(
                 chalk.blue(`\n${count} files synchronized successfully.`)
               )
             );
           } else {
-            const { run, response } = await getResponse({
+            const response = await getResponse({
               openai,
               threadId: thread.id,
               question,
@@ -125,7 +131,6 @@ export async function runAssistantCLI(configFilePath: string): Promise<void> {
             ) {
               await outputCodeBlocks({
                 outDir: config.assistant.generateFiles.outDir,
-                run,
                 response,
                 openai,
               });

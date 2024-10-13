@@ -12,14 +12,8 @@ export interface OnAddProps {
   filePath: string;
   openai: OpenAI;
   vectorStoreId: string;
-  mappingFilePath: string;
 }
-const onAdd = async ({
-  filePath,
-  openai,
-  vectorStoreId,
-  mappingFilePath,
-}: OnAddProps) => {
+const onAdd = async ({ filePath, openai, vectorStoreId }: OnAddProps) => {
   const filename = path.basename(filePath);
 
   // Check if the file exists in OpenAI and handle accordingly
@@ -29,7 +23,6 @@ const onAdd = async ({
       openai,
       vectorStoreId,
       filePath,
-      mappingFilePath,
     })
       .then((_) =>
         console.log(

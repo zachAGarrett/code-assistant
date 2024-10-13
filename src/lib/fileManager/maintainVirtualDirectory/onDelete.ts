@@ -8,14 +8,8 @@ export interface OnDeleteProps {
   filePath: string;
   openai: OpenAI;
   vectorStoreId: string;
-  mappingFilePath: string;
 }
-const onDelete = async ({
-  filePath,
-  openai,
-  vectorStoreId,
-  mappingFilePath,
-}: OnDeleteProps) => {
+const onDelete = async ({ filePath, openai, vectorStoreId }: OnDeleteProps) => {
   const filename = path.basename(filePath);
 
   // If the file exists, remove it from OpenAI and the vector store
@@ -25,7 +19,6 @@ const onDelete = async ({
       openai,
       fileId: existingFile.id,
       vectorStoreId,
-      mappingFilePath,
     });
     console.log(chalk.blue(`\n${filePath} was removed`));
   }

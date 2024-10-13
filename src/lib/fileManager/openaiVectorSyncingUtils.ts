@@ -8,8 +8,8 @@ import {
   addFileMapping,
   removeFileMapping,
 } from "./maintainVirtualDirectory/fileMap.js";
-import { filenameFromPath } from "./manageFlatDirectory.js";
 import path from "path";
+import { getMappingFilePath } from "../config/fileWatcher.js";
 
 // Add a file to an existing vector store in OpenAI by its ID
 export interface AddFileToVectorStoreParams {
@@ -91,19 +91,16 @@ export interface UploadFileAndAddToVectoreStoreParams {
   openai: OpenAI;
   vectorStoreId: string;
   filePath: string;
-  mappingFilePath: string;
 }
 export async function uploadFileAndAddToVectoreStore({
   openai,
   filePath,
   vectorStoreId,
-  mappingFilePath,
 }: UploadFileAndAddToVectoreStoreParams) {
   const fileId = await uploadFileToOpenAI({
     filePath,
     purpose: "assistants",
     openai,
-    mappingFilePath,
   });
   if (fileId) {
     await addFileToVectorStore({
@@ -113,7 +110,7 @@ export async function uploadFileAndAddToVectoreStore({
     });
   }
   // Add the file mapping after successful upload
-  addFileMapping(path.basename(filePath), fileId, mappingFilePath);
+  addFileMapping(path.basename(filePath), fileId, getMappingFilePath());
 }
 
 export interface SyncFileIfMissingFromVectorStoreParams {
@@ -142,13 +139,11 @@ export interface PurgeFileFromOpenAIParams {
   vectorStoreId: string;
   openai: OpenAI;
   fileId: string;
-  mappingFilePath: string;
 }
 export async function purgeFileFromOpenAI({
   vectorStoreId,
   openai,
   fileId,
-  mappingFilePath,
 }: PurgeFileFromOpenAIParams) {
   await deleteFileFromOpenAI({ fileId: fileId, openai });
 
@@ -168,5 +163,5 @@ export async function purgeFileFromOpenAI({
     );
   }
 
-  removeFileMapping(fileId, mappingFilePath);
+  removeFileMapping(fileId, getMappingFilePath());
 }

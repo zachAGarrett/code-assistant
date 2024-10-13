@@ -1,11 +1,6 @@
 import chalk from "chalk";
 import fs from "fs";
 import OpenAI from "openai";
-import {
-  addFileMapping,
-  removeFileMapping,
-} from "./maintainVirtualDirectory/fileMap.js";
-import { filenameFromPath } from "./manageFlatDirectory.js";
 
 // Upload a file to OpenAI with an additional comment containing the document path.
 // The comment is only included in the uploaded file and not saved locally.
@@ -13,7 +8,6 @@ export interface UploadFileToOpenAIParams {
   filePath: string;
   purpose: OpenAI.FilePurpose;
   openai: OpenAI;
-  mappingFilePath: string;
 }
 
 export async function uploadFileToOpenAI({

@@ -1,6 +1,4 @@
-import OpenAI from "openai";
-
-const defaultAssistantInstructions = `
+export const defaultAssistantInstructions = `
 You are an expert software engineer tasked with providing code that aligns with specific functional requirements. When suggesting code, ensure it matches the language, style, and patterns of the given codebase.
 
 # Steps
@@ -44,55 +42,14 @@ def data_processor(data):
 - Always ensure code readability and maintainability.
 - Adhere to any specific additional guidelines provided, such as configuration or deployment requirements.
 - Utilize industry best practices for error handling and performance optimization where relevant.
+- The names of files in your memory have been flattened to represent the project directory structure.
+  - For example, "src->lib->fileManager->maintainVirtualDirectory->index.ts" refers to the file path "./src/lib/fileManager/maintainVirtualDirectory/index.ts"
 `;
 
-export type DefaultConfig = typeof defaultConfig;
+export const codeReviewInstructions = `Check this code for validity, adding any comments, refactoring, and generally ensuring code works as intended.
 
-export interface FileSyncConfig {
-  sourceDir: string;
-  globPattern: string;
-}
-
-export interface fileGenerationConfig {
-  outDir: string;
-}
-
-export interface AssistantConfig {
-  name: string;
-  description: string;
-  instructions: string;
-  model: OpenAI.ChatModel;
-  generateFiles?: fileGenerationConfig | false;
-  ignorePatterns?: string[];
-}
-
-export interface Config {
-  fileSync: FileSyncConfig;
-  assistant: AssistantConfig;
-}
-
-export interface PartialFileSyncConfig {
-  sourceDir: string;
-  globPattern?: string;
-}
-export type PartialAssistantConfig = Partial<AssistantConfig>;
-export interface PartialConfig {
-  fileSync: PartialFileSyncConfig;
-  assistant?: PartialAssistantConfig;
-}
-const defaultConfig = {
-  assistant: {
-    name: "programming assistant",
-    description: "Expert programming assistant",
-    instructions: defaultAssistantInstructions,
-    model: "gpt-4o" as OpenAI.ChatModel,
-    generateFiles: false as false,
-    ignorePatterns: [],
-  },
-  fileSync: {
-    globPattern:
-      "**/*.{c,cpp,cs,css,doc,docx,go,html,java,js,json,md,pdf,php,pptx,py,rb,sh,tex,ts,txt}",
-  },
-};
-
-export default defaultConfig;
+Adhere to the following instructions when writing the response:
+1. Write the path of the file where this code should live in the codebase relative to the root directory on the first line.
+2. The file path should include the file extension, which may be any of c, cpp, cs, css, doc, docx, go, html, java, js, json, md, pdf, php, pptx, py, rb, sh, tex, ts, txt.
+3. The remainer of the message should include the complete functional code. No description or explanation of the code is necessary except as in line comments.
+`;

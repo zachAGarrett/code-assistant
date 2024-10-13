@@ -13,13 +13,11 @@ export interface WatchAndSyncFilesParams {
   openai: OpenAI;
   globPattern: string;
   vectorStoreName?: string;
-  mappingFilePath: string;
 }
 export default async function maintainVirtualDirectory({
   openai,
   globPattern,
   vectorStoreName = "Programming Assistant Vector Store",
-  mappingFilePath,
 }: WatchAndSyncFilesParams) {
   // Find or create a vector store to store files
   const vectorStore = await findOrCreateVectorStore({
@@ -33,7 +31,6 @@ export default async function maintainVirtualDirectory({
     openai,
     vectorStoreId: vectorStore.id,
     globPattern,
-    mappingFilePath,
   });
 
   // Initialize file watcher to detect additions, changes, and deletions
@@ -41,7 +38,7 @@ export default async function maintainVirtualDirectory({
 
   // Watcher event: file addition
   watcher.on("add", async (filePath: string) =>
-    onAdd({ filePath, openai, vectorStoreId: vectorStore.id, mappingFilePath })
+    onAdd({ filePath, openai, vectorStoreId: vectorStore.id })
   );
 
   // Watcher event: file change
@@ -50,7 +47,6 @@ export default async function maintainVirtualDirectory({
       filePath,
       openai,
       vectorStoreId: vectorStore.id,
-      mappingFilePath,
     })
   );
 
@@ -60,7 +56,6 @@ export default async function maintainVirtualDirectory({
       filePath,
       openai,
       vectorStoreId: vectorStore.id,
-      mappingFilePath,
     })
   );
 

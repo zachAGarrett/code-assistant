@@ -11,14 +11,8 @@ export interface OnChangeProps {
   filePath: string;
   openai: OpenAI;
   vectorStoreId: string;
-  mappingFilePath: string;
 }
-const onChange = async ({
-  filePath,
-  openai,
-  vectorStoreId,
-  mappingFilePath,
-}: OnChangeProps) => {
+const onChange = async ({ filePath, openai, vectorStoreId }: OnChangeProps) => {
   const filename = path.basename(filePath);
 
   // If file exists, delete old version and upload new version
@@ -28,7 +22,6 @@ const onChange = async ({
       openai,
       fileId: existingFile.id,
       vectorStoreId,
-      mappingFilePath,
     });
   }
 
@@ -36,7 +29,6 @@ const onChange = async ({
     openai,
     vectorStoreId,
     filePath,
-    mappingFilePath,
   })
     .then((_) =>
       console.log(chalk.blue(`\nMemory updated with latest ${filename}.`))

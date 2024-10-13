@@ -18,17 +18,13 @@ import {
   addFileMapping,
   readFileIdMap,
 } from "../fileManager/maintainVirtualDirectory/fileMap.js";
+import { getMappingFilePath } from "../config/fileWatcher.js";
 
 export interface PurgeFilesProps {
   openai: OpenAI;
   vectorStoreId: string;
-  mappingFilePath: string;
 }
-export async function purgeFiles({
-  openai,
-  vectorStoreId,
-  mappingFilePath,
-}: PurgeFilesProps) {
+export async function purgeFiles({ openai, vectorStoreId }: PurgeFilesProps) {
   const storedFiles = await animate(
     () => listOpenAIFiles({ openai }),
     chalk.blue("Looking for files to purge")
@@ -46,7 +42,6 @@ export async function purgeFiles({
                   openai,
                   vectorStoreId,
                   fileId: id,
-                  mappingFilePath,
                 })
               )
             )
@@ -63,13 +58,11 @@ export interface SyncFilesProps {
   openai: OpenAI;
   globPattern: string;
   vectorStoreId: string;
-  mappingFilePath: string;
 }
 export async function syncFiles({
   openai,
   globPattern,
   vectorStoreId,
-  mappingFilePath,
 }: SyncFilesProps) {
   // Initial sync: find all files in the temp directory that match the glob pattern
   const matchedFiles = await animate(
@@ -99,7 +92,6 @@ export async function syncFiles({
                   openai,
                   vectorStoreId,
                   filePath,
-                  mappingFilePath,
                 })
                   .then((_) =>
                     console.log(
@@ -128,14 +120,14 @@ export async function syncFiles({
                 });
               } else if (
                 Object.hasOwn(
-                  readFileIdMap(mappingFilePath),
+                  readFileIdMap(getMappingFilePath()),
                   existingFile.id
                 ) === false
               ) {
                 addFileMapping(
                   path.basename(filePath),
                   existingFile.id,
-                  mappingFilePath
+                  getMappingFilePath()
                 );
               }
             })

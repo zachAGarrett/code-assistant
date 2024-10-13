@@ -1,12 +1,15 @@
-import { promises as fs } from "fs";
+import { promises as fs, readFileSync } from "fs";
 import OpenAI from "openai";
 import path from "path";
-import {
-  countFilesInDirectory,
-  ensureDirectoryExists,
-} from "../fileManager/manageFlatDirectory.js";
+import { ensureDirectoryExists } from "../fileManager/manageFlatDirectory.js";
 import { animate } from "./cliUtils.js";
 import chalk from "chalk";
+import { readFileIdMap } from "../fileManager/maintainVirtualDirectory/fileMap.js";
+import {
+  getInstanceTrackedDirectory,
+  getMappingFilePath,
+} from "../config/fileWatcher.js";
+import { codeReviewInstructions } from "./instructions.js";
 
 export async function findOrCreateAssistant(
   openai: OpenAI,
@@ -98,7 +101,7 @@ export async function getResponse({
   question,
   assistantId,
 }: GetResponseParams) {
-  const run = await animate(async () => {
+  await animate(async () => {
     await openai.beta.threads.messages.create(threadId, {
       role: "user",
       content: question,
@@ -109,64 +112,21 @@ export async function getResponse({
       threadId,
       assistantId,
     });
-  }, "Generating response");
+  }, chalk.blueBright("\nWorking on it"));
   const messagesPage = await openai.beta.threads.messages.list(threadId);
   const response = messagesPage.data[0];
-  return { run, response };
-}
-
-export function getFileExtensionFromType(fileType: string) {
-  // Map of MIME types to their corresponding extensions
-  const typeToExtension: Record<string, string> = {
-    "x-c": ".c",
-    "x-c++": ".cpp",
-    "x-csharp": ".cs",
-    css: ".css",
-    msword: ".doc",
-    "vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-    "x-golang": ".go",
-    html: ".html",
-    "x-java": ".java",
-    javascript: ".js",
-    json: ".json",
-    markdown: ".md",
-    pdf: ".pdf",
-    "x-php": ".php",
-    "vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
-    "x-python": ".py",
-    "x-ruby": ".rb",
-    "x-sh": ".sh",
-    "x-tex": ".tex",
-    typescript: ".ts",
-    plain: ".txt",
-    plaintext: ".txt",
-  };
-
-  // Return the corresponding file extension or .txt if not found
-  return typeToExtension[fileType] || ".txt";
-}
-
-export function getFileExtensionFromOpenAICodeBlock(openAICodeBlock: string) {
-  const lines = openAICodeBlock.split("\n");
-
-  if (lines.length >= 1) {
-    return getFileExtensionFromType(lines[0]);
-  } else {
-    throw "\nCode block did not have any lines";
-  }
+  return response;
 }
 
 export interface OutputCodeBlocksParams {
   outDir: string;
-  run: OpenAI.Beta.Threads.Runs.Run;
   response: OpenAI.Beta.Threads.Messages.Message;
   openai: OpenAI;
 }
 export async function outputCodeBlocks({
   outDir,
   response,
-  run,
-  // openai,
+  openai,
 }: OutputCodeBlocksParams) {
   const absoluteOutDir = path.resolve(outDir);
 
@@ -177,54 +137,126 @@ export async function outputCodeBlocks({
     responseText?.value && extractCodeBlocks(responseText?.value);
 
   if (Array.isArray(codeBlocks)) {
-    await Promise.all(
-      codeBlocks.map(async (code, i) => {
-        try {
-          // await validateCodeBlock({
-          //   openai,
-          //   annotations: responseText?.annotations,
-          //   code,
-          // });
-          await ensureDirectoryExists(absoluteOutDir);
-          const filesInOutDir = await countFilesInDirectory(absoluteOutDir);
-          const fileExtension = getFileExtensionFromOpenAICodeBlock(code);
-          const targetPath = path.join(
-            absoluteOutDir,
-            `generated--${filesInOutDir}--${run.id}--${i}.${fileExtension}`
-          );
+    animate(async () => {
+      const validatedCodeObjects = (
+        await Promise.all(
+          codeBlocks.map(async (code) => {
+            const validationResponse = (
+              await validateCodeBlock({
+                openai,
+                annotations: responseText?.annotations,
+                code,
+              })
+            )?.choices[0].message.content;
 
-          // create the file with the code block, less the file type declaration
-          await fs.writeFile(targetPath, code.split("\n").slice(1).join("\n"));
-        } catch (error) {
-          console.error(
-            chalk.red(`\nFailed to output codeblock as a file.`, "\n" + error)
-          );
+            if (
+              validationResponse === null ||
+              validationResponse === undefined
+            ) {
+              return undefined;
+            } else {
+              try {
+                const codeParts = validationResponse.split("\n");
+                return [
+                  codeParts[0],
+                  extractCodeBlocks(codeParts.slice(1).join("\n"))[0]
+                    .split("\n")
+                    .slice(1)
+                    .join("\n"),
+                ];
+              } catch (error) {
+                console.error(
+                  chalk.red(
+                    `\nFailed to parse code from response`,
+                    validationResponse,
+                    "\n" + error
+                  )
+                );
+              }
+            }
+          })
+        )
+      ).filter((code) => code !== undefined);
+
+      const writeFilePromises = validatedCodeObjects.map(
+        async ([filePath, code]) => {
+          try {
+            const completeFilePath = path.join(absoluteOutDir, filePath);
+            await ensureDirectoryExists(path.dirname(completeFilePath));
+            await fs.writeFile(completeFilePath, code);
+            console.log(chalk.blue(`\nWrote generated code to ${filePath}`));
+          } catch (error) {
+            console.error(
+              chalk.red(
+                `\nFailed to output codeblock as a file.`,
+                "\n" + error,
+                "\n" + filePath,
+                "\n" + code
+              )
+            );
+          }
         }
-      })
-    );
+      );
+
+      await Promise.all(writeFilePromises);
+    }, chalk.blue(`\nValidating ${codeBlocks.length} code blocks`));
   }
 }
 
-// export interface ValidateCodeBlockProps {
-//   code: string;
-//   annotations?: OpenAI.Beta.Threads.Messages.Annotation[];
-//   openai: OpenAI;
-// }
-// export async function validateCodeBlock({
-//   openai,
-//   annotations,
-// }: // code,
-// ValidateCodeBlockProps) {
-//   console.log(JSON.stringify(annotations, undefined, 2));
-//   const citedContent =
-//     annotations &&
-//     (await Promise.all(
-//       annotations
-//         .filter((annotation) => annotation.type === "file_citation")
-//         .map(async ({ file_citation }) => {
-//           file_citation.file_id
-//         })
-//     ));
+export interface ValidatedCodeObject {
+  filePath: string;
+  code: string;
+}
 
-//   console.log(JSON.stringify(citedContent, undefined, 2));
-// }
+export interface ValidateCodeBlockProps {
+  code: string;
+  annotations?: OpenAI.Beta.Threads.Messages.Annotation[];
+  openai: OpenAI;
+}
+export async function validateCodeBlock({
+  openai,
+  annotations,
+  code,
+}: ValidateCodeBlockProps) {
+  const citedContent =
+    annotations &&
+    (await Promise.all(
+      annotations
+        .filter((annotation) => annotation.type === "file_citation")
+        .map(async ({ file_citation }) =>
+          readFileSync(
+            path.join(
+              getInstanceTrackedDirectory(),
+              readFileIdMap(getMappingFilePath())[file_citation.file_id]
+            ),
+            "utf-8"
+          )
+        )
+    ));
+
+  const referencedFileContextMessages:
+    | OpenAI.ChatCompletionAssistantMessageParam[]
+    | undefined = citedContent?.map((content) => ({
+    role: "assistant",
+    content,
+  }));
+  const messages: OpenAI.ChatCompletionMessageParam[] = [
+    {
+      role: "user",
+      content: codeReviewInstructions,
+    },
+    {
+      role: "assistant",
+      content: `Here's the code for review: \`\`\`\n${code}\`\`\``,
+    },
+    ...(referencedFileContextMessages || []),
+  ];
+  try {
+    return await openai.chat.completions.create({
+      model: "o1-preview",
+      messages: messages,
+    });
+  } catch (error) {
+    console.error(chalk.red(`\nFailed to validate code`, "\n" + error));
+  }
+}
