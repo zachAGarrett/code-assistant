@@ -12,50 +12,67 @@ import maintainVirtualDirectory from "./fileManager/maintainVirtualDirectory/ind
 import path from "path";
 import getConfig from "./assistant/getConfig.js";
 import manageFlatDirectory, {
-  createSubdirectoryForSourceInTarget,
+  ensureInstanceSubdirectory,
 } from "./fileManager/manageFlatDirectory.js";
 import { help, purgeFiles, syncFiles } from "./assistant/commands.js";
-import { fileURLToPath } from "url";
-
-// Convert `import.meta.url` to a usable directory path
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import {
+  animate,
+  startLoadingAnimation,
+  stopLoadingAnimation,
+} from "./assistant/cliUtils.js";
+import { assetsDir } from "./fileManager/maintainVirtualDirectory/fileMap.js";
+import fs from "fs";
 
 // Load environment variables
 dotenv.config();
 
 // Main CLI function
 export async function runAssistantCLI(configFilePath: string): Promise<void> {
-  const config = await getConfig(configFilePath);
   const openai = new OpenAI({
     apiKey: process.env.apiKey,
     organization: process.env.organization,
     project: process.env.project,
   });
+  const config = getConfig(configFilePath);
 
-  // Setup the file watching and openAI integrations
-  const flatDir = await createSubdirectoryForSourceInTarget(
-    __dirname + "/files",
-    config.fileSync.sourceDir
+  const timeout = startLoadingAnimation(
+    chalk.blue("Virtualizing watched files")
   );
+
+  const { instanceBaseDirectory, instanceTrackedDirectory } =
+    await ensureInstanceSubdirectory(assetsDir, config.fileSync.sourceDir);
+
+  // Define the path for the persistent store (JSON file) in the bin directory
+  const mappingFilePath = path.join(instanceBaseDirectory, "/fileMap.json");
+
+  // Initialize store with an empty object if it doesn't exist
+  if (!fs.existsSync(mappingFilePath)) {
+    fs.writeFileSync(mappingFilePath, JSON.stringify({}));
+  }
+
   await manageFlatDirectory(
     config.fileSync.sourceDir,
-    flatDir,
-    config.fileSync.globPattern
+    instanceTrackedDirectory,
+    config.fileSync.globPattern,
+    config.assistant.ignorePatterns || []
   );
   const { vectorStoreId } = await maintainVirtualDirectory({
     openai,
-    sourceDir: config.fileSync.sourceDir,
     globPattern: path
-      .join(flatDir, config.fileSync.globPattern)
+      .join(instanceTrackedDirectory, config.fileSync.globPattern)
       .replace(/\\/g, "/"),
+    mappingFilePath,
   });
+  stopLoadingAnimation(timeout);
 
-  // Initialize assistant
-  const assistant = await findOrCreateAssistant(openai, config.assistant);
-  const thread = await createThread(openai, {
-    tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } },
-  });
+  const { assistant, thread } = await animate(async () => {
+    const assistant = await findOrCreateAssistant(openai, config.assistant);
+    const thread = await createThread(openai, {
+      tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } },
+    });
+
+    return { assistant, thread };
+  }, chalk.blue("Setting up your assistant"));
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
 
@@ -73,31 +90,34 @@ export async function runAssistantCLI(configFilePath: string): Promise<void> {
           }
 
           if (question === "$purge") {
-            await purgeFiles({ openai, vectorStoreId }).then((count) =>
-              console.log(chalk.green(`${count} files purged successfully.`))
+            await purgeFiles({ openai, vectorStoreId, mappingFilePath }).then(
+              (count) =>
+                console.log(chalk.blue(`\n${count} files purged successfully.`))
             );
-            
           } else if (question === "$sync") {
             await syncFiles({
               openai,
               vectorStoreId,
-              globPattern: path.join(flatDir, config.fileSync.globPattern),
+              globPattern: path.join(
+                instanceTrackedDirectory,
+                config.fileSync.globPattern
+              ),
+              mappingFilePath,
             }).then((count) =>
               console.log(
-                chalk.green(`${count} files synchronized successfully.`)
+                chalk.blue(`\n${count} files synchronized successfully.`)
               )
             );
           } else {
-            const response = await getResponse({
+            const { run, response } = await getResponse({
               openai,
               threadId: thread.id,
               question,
               assistantId: assistant.id,
             });
-            const lastMessage = response.content[0];
-            const lastMessageContent =
-              lastMessage.type === "text" ? lastMessage.text.value : undefined;
-            console.log(chalk.magenta(lastMessageContent));
+
+            response.content[0].type === "text" &&
+              console.log(chalk.magenta("\n" + response.content[0].text.value));
 
             if (
               config.assistant.generateFiles !== undefined &&
@@ -105,13 +125,14 @@ export async function runAssistantCLI(configFilePath: string): Promise<void> {
             ) {
               await outputCodeBlocks({
                 outDir: config.assistant.generateFiles.outDir,
-                lastMessageContent,
-                runId: response.run_id,
+                run,
+                response,
+                openai,
               });
             }
           }
         } catch (error) {
-          console.error(chalk.red("An error occurred: "), error);
+          console.error(chalk.red("\nAn error occurred: ", "\n" + error));
         } finally {
           promptQuestion();
         }

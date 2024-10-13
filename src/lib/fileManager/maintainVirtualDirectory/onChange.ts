@@ -5,13 +5,20 @@ import {
   purgeFileFromOpenAI,
   uploadFileAndAddToVectoreStore,
 } from "../openaiVectorSyncingUtils.js";
+import chalk from "chalk";
 
 export interface OnChangeProps {
   filePath: string;
   openai: OpenAI;
   vectorStoreId: string;
+  mappingFilePath: string;
 }
-const onChange = async ({ filePath, openai, vectorStoreId }: OnChangeProps) => {
+const onChange = async ({
+  filePath,
+  openai,
+  vectorStoreId,
+  mappingFilePath,
+}: OnChangeProps) => {
   const filename = path.basename(filePath);
 
   // If file exists, delete old version and upload new version
@@ -21,6 +28,7 @@ const onChange = async ({ filePath, openai, vectorStoreId }: OnChangeProps) => {
       openai,
       fileId: existingFile.id,
       vectorStoreId,
+      mappingFilePath,
     });
   }
 
@@ -28,12 +36,17 @@ const onChange = async ({ filePath, openai, vectorStoreId }: OnChangeProps) => {
     openai,
     vectorStoreId,
     filePath,
+    mappingFilePath,
   })
-    .then((_) => console.log(`Memory updated with latest ${filename}.`))
+    .then((_) =>
+      console.log(chalk.blue(`\nMemory updated with latest ${filename}.`))
+    )
     .catch((err) =>
-      console.log(
-        `${filename} could not be added to the assistant's memory.`,
-        err
+      console.error(
+        chalk.red(
+          `\n${filename} could not be added to the assistant's memory.`,
+          "\n" + err
+        )
       )
     );
 };

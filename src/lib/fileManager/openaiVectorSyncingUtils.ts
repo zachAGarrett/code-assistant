@@ -3,6 +3,13 @@ import {
   deleteFileFromOpenAI,
   uploadFileToOpenAI,
 } from "./openaiFileSyncingUtils.js";
+import chalk from "chalk";
+import {
+  addFileMapping,
+  removeFileMapping,
+} from "./maintainVirtualDirectory/fileMap.js";
+import { filenameFromPath } from "./manageFlatDirectory.js";
+import path from "path";
 
 // Add a file to an existing vector store in OpenAI by its ID
 export interface AddFileToVectorStoreParams {
@@ -74,7 +81,9 @@ export async function findOrCreateVectorStore({
     // Otherwise, create a new vector store with the specified name
     return await openai.beta.vectorStores.create({ name: vectorStoreName });
   } catch (error: any) {
-    console.error(`Error instantiating vector store: ${error.message}`);
+    console.error(
+      chalk.red(`\nError instantiating vector store: ${error.message}`)
+    );
   }
 }
 
@@ -82,16 +91,19 @@ export interface UploadFileAndAddToVectoreStoreParams {
   openai: OpenAI;
   vectorStoreId: string;
   filePath: string;
+  mappingFilePath: string;
 }
 export async function uploadFileAndAddToVectoreStore({
   openai,
   filePath,
   vectorStoreId,
+  mappingFilePath,
 }: UploadFileAndAddToVectoreStoreParams) {
   const fileId = await uploadFileToOpenAI({
     filePath,
     purpose: "assistants",
     openai,
+    mappingFilePath,
   });
   if (fileId) {
     await addFileToVectorStore({
@@ -100,6 +112,8 @@ export async function uploadFileAndAddToVectoreStore({
       fileId,
     });
   }
+  // Add the file mapping after successful upload
+  addFileMapping(path.basename(filePath), fileId, mappingFilePath);
 }
 
 export interface SyncFileIfMissingFromVectorStoreParams {
@@ -107,7 +121,7 @@ export interface SyncFileIfMissingFromVectorStoreParams {
   openai: OpenAI;
   fileId: string;
 }
-export async function syncFileIfMissingFromVectorStore({
+export async function fileIsMissingFromVectorStore({
   vectorStoreId,
   openai,
   fileId,
@@ -118,11 +132,9 @@ export async function syncFileIfMissingFromVectorStore({
     openai,
   });
   if (!vectorStoreFiles.data.some(({ id }) => id === fileId)) {
-    await addFileToVectorStore({
-      vectorStoreId,
-      fileId,
-      openai,
-    });
+    return true;
+  } else {
+    return false;
   }
 }
 
@@ -130,11 +142,13 @@ export interface PurgeFileFromOpenAIParams {
   vectorStoreId: string;
   openai: OpenAI;
   fileId: string;
+  mappingFilePath: string;
 }
 export async function purgeFileFromOpenAI({
   vectorStoreId,
   openai,
   fileId,
+  mappingFilePath,
 }: PurgeFileFromOpenAIParams) {
   await deleteFileFromOpenAI({ fileId: fileId, openai });
 
@@ -149,7 +163,10 @@ export async function purgeFileFromOpenAI({
       openai,
     }).catch(
       (err: OpenAI.ErrorObject) =>
-        err.code === "404" && console.log("file not found in vector store")
+        err.code === "404" &&
+        console.error(chalk.red("\nFile not found in vector store"))
     );
   }
+
+  removeFileMapping(fileId, mappingFilePath);
 }

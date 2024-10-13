@@ -2,16 +2,24 @@ import path from "path";
 import { findFileInOpenAIByFilename } from "../openaiFileSyncingUtils.js";
 import OpenAI from "openai";
 import {
-  syncFileIfMissingFromVectorStore,
+  addFileToVectorStore,
+  fileIsMissingFromVectorStore,
   uploadFileAndAddToVectoreStore,
 } from "../openaiVectorSyncingUtils.js";
+import chalk from "chalk";
 
 export interface OnAddProps {
   filePath: string;
   openai: OpenAI;
   vectorStoreId: string;
+  mappingFilePath: string;
 }
-const onAdd = async ({ filePath, openai, vectorStoreId }: OnAddProps) => {
+const onAdd = async ({
+  filePath,
+  openai,
+  vectorStoreId,
+  mappingFilePath,
+}: OnAddProps) => {
   const filename = path.basename(filePath);
 
   // Check if the file exists in OpenAI and handle accordingly
@@ -21,21 +29,32 @@ const onAdd = async ({ filePath, openai, vectorStoreId }: OnAddProps) => {
       openai,
       vectorStoreId,
       filePath,
+      mappingFilePath,
     })
       .then((_) =>
-        console.log(`${filename} was added to the assistant's memory.`)
+        console.log(
+          chalk.blue(`\n${filename} was added to the assistant's memory.`)
+        )
       )
       .catch((err) =>
-        console.log(
-          `${filename} could not be added to the assistant's memory.`,
-          err
+        console.error(
+          chalk.red(
+            `\n${filename} could not be added to the assistant's memory.`,
+            "\n" + err
+          )
         )
       );
-  } else {
-    await syncFileIfMissingFromVectorStore({
+  } else if (
+    await fileIsMissingFromVectorStore({
       openai,
       vectorStoreId,
       fileId: existingFile.id,
+    })
+  ) {
+    await addFileToVectorStore({
+      vectorStoreId,
+      fileId: existingFile.id,
+      openai,
     });
   }
 };

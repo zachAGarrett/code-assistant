@@ -5,7 +5,8 @@ import {
   countFilesInDirectory,
   ensureDirectoryExists,
 } from "../fileManager/manageFlatDirectory.js";
-import { startLoadingAnimation, stopLoadingAnimation } from "./cliUtils.js";
+import { animate } from "./cliUtils.js";
+import chalk from "chalk";
 
 export async function findOrCreateAssistant(
   openai: OpenAI,
@@ -67,9 +68,15 @@ export async function createAndPoll({
   let run;
   do {
     await new Promise((resolve) => setTimeout(resolve, pollInterval));
-    run = await openai.beta.threads.runs.createAndPoll(threadId, {
+    const runCreateParams: OpenAI.Beta.Threads.RunCreateParamsNonStreaming = {
       assistant_id: assistantId,
-    });
+      include: ["step_details.tool_calls[*].file_search.results[*].content"],
+    };
+
+    run = await openai.beta.threads.runs.createAndPoll(
+      threadId,
+      runCreateParams
+    );
   } while (run.status !== "completed" && run.status !== "failed");
 
   if (run.status === "failed") {
@@ -91,23 +98,21 @@ export async function getResponse({
   question,
   assistantId,
 }: GetResponseParams) {
-  startLoadingAnimation("Generating response");
-  await openai.beta.threads.messages.create(threadId, {
-    role: "user",
-    content: question,
-  });
+  const run = await animate(async () => {
+    await openai.beta.threads.messages.create(threadId, {
+      role: "user",
+      content: question,
+    });
 
-  await createAndPoll({
-    openai,
-    threadId,
-    assistantId,
-  });
-
-  // Stop loading animation once the operation is complete
-  stopLoadingAnimation();
+    return await createAndPoll({
+      openai,
+      threadId,
+      assistantId,
+    });
+  }, "Generating response");
   const messagesPage = await openai.beta.threads.messages.list(threadId);
   const response = messagesPage.data[0];
-  return response;
+  return { run, response };
 }
 
 export function getFileExtensionFromType(fileType: string) {
@@ -147,42 +152,79 @@ export function getFileExtensionFromOpenAICodeBlock(openAICodeBlock: string) {
   if (lines.length >= 1) {
     return getFileExtensionFromType(lines[0]);
   } else {
-    throw "Code block did not have any lines";
+    throw "\nCode block did not have any lines";
   }
 }
 
 export interface OutputCodeBlocksParams {
   outDir: string;
-  lastMessageContent: string | undefined;
-  runId: string | null;
+  run: OpenAI.Beta.Threads.Runs.Run;
+  response: OpenAI.Beta.Threads.Messages.Message;
+  openai: OpenAI;
 }
 export async function outputCodeBlocks({
   outDir,
-  lastMessageContent,
-  runId,
+  response,
+  run,
+  // openai,
 }: OutputCodeBlocksParams) {
   const absoluteOutDir = path.resolve(outDir);
 
-  const codeBlocks =
-    lastMessageContent && extractCodeBlocks(lastMessageContent);
+  const responseText =
+    response.content[0].type === "text" ? response.content[0].text : undefined;
 
-  Array.isArray(codeBlocks) &&
-    (await Promise.all(
+  const codeBlocks =
+    responseText?.value && extractCodeBlocks(responseText?.value);
+
+  if (Array.isArray(codeBlocks)) {
+    await Promise.all(
       codeBlocks.map(async (code, i) => {
         try {
+          // await validateCodeBlock({
+          //   openai,
+          //   annotations: responseText?.annotations,
+          //   code,
+          // });
           await ensureDirectoryExists(absoluteOutDir);
           const filesInOutDir = await countFilesInDirectory(absoluteOutDir);
           const fileExtension = getFileExtensionFromOpenAICodeBlock(code);
           const targetPath = path.join(
             absoluteOutDir,
-            `generated--${filesInOutDir}--${runId}--${i}.${fileExtension}`
+            `generated--${filesInOutDir}--${run.id}--${i}.${fileExtension}`
           );
 
           // create the file with the code block, less the file type declaration
           await fs.writeFile(targetPath, code.split("\n").slice(1).join("\n"));
         } catch (error) {
-          console.log(`Failed to output codeblock as a file.`, error);
+          console.error(
+            chalk.red(`\nFailed to output codeblock as a file.`, "\n" + error)
+          );
         }
       })
-    ));
+    );
+  }
 }
+
+// export interface ValidateCodeBlockProps {
+//   code: string;
+//   annotations?: OpenAI.Beta.Threads.Messages.Annotation[];
+//   openai: OpenAI;
+// }
+// export async function validateCodeBlock({
+//   openai,
+//   annotations,
+// }: // code,
+// ValidateCodeBlockProps) {
+//   console.log(JSON.stringify(annotations, undefined, 2));
+//   const citedContent =
+//     annotations &&
+//     (await Promise.all(
+//       annotations
+//         .filter((annotation) => annotation.type === "file_citation")
+//         .map(async ({ file_citation }) => {
+//           file_citation.file_id
+//         })
+//     ));
+
+//   console.log(JSON.stringify(citedContent, undefined, 2));
+// }

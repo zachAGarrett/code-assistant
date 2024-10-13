@@ -2,19 +2,33 @@ import { promises as fs, statSync } from "fs";
 import path from "path";
 import { glob } from "glob";
 import watch from "glob-watcher";
+import chalk from "chalk";
+
+function ignoreFile(filePath: string, ignorePatterns: string[]): boolean {
+  const normalizedPath = filePath.replace(/\\/g, "/");
+
+  return ignorePatterns.some((pattern) => {
+    const regex = new RegExp(
+      `^${pattern.replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*")}(\\/.*)?$`
+    );
+    return regex.test(normalizedPath);
+  });
+}
 
 export async function ensureDirectoryExists(dirPath: string) {
   try {
     await fs.mkdir(dirPath, { recursive: true });
   } catch (error) {
-    console.error(`Error creating directory: ${(error as any).message}`);
+    console.error(
+      chalk.red(`\nError creating directory: "\n" +${(error as any).message}`)
+    );
   }
 }
 
 /**
  * Replaces path separators with '->' for flat naming in target directory
  */
-function flattenFilePath(filePath: string, baseDir: string) {
+export function filenameFromPath(filePath: string, baseDir: string) {
   const relativePath = path.relative(baseDir, filePath);
   return relativePath.split(path.sep).join("->");
 }
@@ -22,19 +36,20 @@ function flattenFilePath(filePath: string, baseDir: string) {
 /**
  * Creates a subdirectory based on the target directory's absolute path in the base directory
  */
-export async function createSubdirectoryForSourceInTarget(
+export async function ensureInstanceSubdirectory(
   targetDir: string,
   sourceDir: string
 ) {
   const absoluteTargetDir = path.resolve(targetDir);
-  const subdirectory = path.join(
+  const instanceBaseDirectory = path.join(
     path.dirname(absoluteTargetDir),
     path.basename(absoluteTargetDir),
     path.resolve(sourceDir).split(path.sep).join("--")
   );
+  const instanceTrackedDirectory = path.join(instanceBaseDirectory, "/files");
 
-  await ensureDirectoryExists(subdirectory);
-  return subdirectory;
+  await ensureDirectoryExists(instanceTrackedDirectory);
+  return { instanceBaseDirectory, instanceTrackedDirectory };
 }
 
 /**
@@ -46,13 +61,15 @@ async function copyFile(
   baseDir: string
 ) {
   await ensureDirectoryExists(targetDir);
-  const flatFileName = flattenFilePath(sourcePath, baseDir);
+  const flatFileName = filenameFromPath(sourcePath, baseDir);
   const targetPath = path.join(targetDir, flatFileName);
 
   try {
     await fs.copyFile(sourcePath, targetPath);
   } catch (error: any) {
-    console.error(`Error copying file: ${sourcePath}. Error: ${error.message}`);
+    console.error(
+      chalk.red(`\nError copying file: ${sourcePath}. Error: ${error.message}`)
+    );
   }
 }
 
@@ -64,17 +81,21 @@ async function deleteFile(
   targetDir: string,
   baseDir: string
 ) {
-  const flatFileName = flattenFilePath(sourcePath, baseDir);
+  const flatFileName = filenameFromPath(sourcePath, baseDir);
   const targetPath = path.join(targetDir, flatFileName);
 
   try {
     await fs.unlink(targetPath);
   } catch (error: any) {
     if (error.code === "ENOENT") {
-      console.warn(`File not found for deletion: ${targetPath}`);
+      console.warn(
+        chalk.yellow(`\nFile not found for deletion: ${targetPath}`)
+      );
     } else {
-      console.error(
-        `Error deleting file: ${targetPath}. Error: ${error.message}`
+      console.warn(
+        chalk.red(
+          `\nError deleting file: ${targetPath}. Error: ${error.message}`
+        )
       );
     }
   }
@@ -86,11 +107,16 @@ async function deleteFile(
 export default async function manageFlatDirectory(
   sourceDir: string,
   targetDir: string,
-  globPattern: string
+  globPattern: string,
+  ignorePatterns: string[]
 ) {
   // First, copy all existing files into the newly created subdirectory
   const fullGlobPattern = path.join(sourceDir, globPattern).replace(/\\/g, "/");
-  const files = glob.sync(fullGlobPattern);
+  const files = glob
+    .sync(fullGlobPattern)
+    .filter(
+      (file) => !ignoreFile(file.replace(sourceDir + "/", ""), ignorePatterns)
+    ); // Filter ignored files
 
   // Copy each file
   await Promise.all(files.map((file) => copyFile(file, targetDir, sourceDir)));
@@ -99,13 +125,16 @@ export default async function manageFlatDirectory(
   const watcher = watch(fullGlobPattern);
 
   watcher.on("add", (filePath: string) => {
-    copyFile(filePath, targetDir, sourceDir);
+    if (!ignoreFile(filePath.replace(sourceDir + "/", ""), ignorePatterns)) {
+      copyFile(filePath, targetDir, sourceDir);
+    }
   });
 
   watcher.on("change", (filePath: string) => {
-    copyFile(filePath, targetDir, sourceDir);
+    if (!ignoreFile(filePath.replace(sourceDir + "/", ""), ignorePatterns)) {
+      copyFile(filePath, targetDir, sourceDir);
+    }
   });
-
   watcher.on("unlink", (filePath: string) => {
     deleteFile(filePath, targetDir, sourceDir);
   });
@@ -127,7 +156,9 @@ export async function countFilesInDirectory(
 
     return fileCount;
   } catch (error) {
-    console.error("Error reading directory:", (error as any).message);
+    console.error(
+      chalk.red("\nError reading directory:", "\n" + (error as any).message)
+    );
     return 0; // Return 0 or handle error appropriately
   }
 }

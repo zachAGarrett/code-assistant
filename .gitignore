@@ -1,5 +1,5 @@
 node_modules
-assistant-config.json
+para-config.json
 /build
 /generated
 *.tsbuildinfo

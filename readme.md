@@ -49,7 +49,7 @@ Follow the steps below to clone the repository and install the CLI tool:
    OPENAI_ORG_ID
    OPENAI_PROJECT_ID
 
-6. **Set Up Your Config file (assistant-config.json)**:
+6. **Set Up Your Config file (para-config.json)**:
    {
    "fileSync": {
    "sourceDir": "./src",

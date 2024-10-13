@@ -5,20 +5,21 @@ import { syncFiles } from "../../assistant/commands.js";
 import onDelete from "./onDelete.js";
 import onChange from "./onChange.js";
 import onAdd from "./onAdd.js";
+import chalk from "chalk";
 
 // Watch files in the specified directory and sync with OpenAI.
 // Handles additions, changes, and deletions of files in real-time.
 export interface WatchAndSyncFilesParams {
   openai: OpenAI;
-  sourceDir: string;
   globPattern: string;
   vectorStoreName?: string;
+  mappingFilePath: string;
 }
 export default async function maintainVirtualDirectory({
   openai,
-  sourceDir,
   globPattern,
   vectorStoreName = "Programming Assistant Vector Store",
+  mappingFilePath,
 }: WatchAndSyncFilesParams) {
   // Find or create a vector store to store files
   const vectorStore = await findOrCreateVectorStore({
@@ -32,6 +33,7 @@ export default async function maintainVirtualDirectory({
     openai,
     vectorStoreId: vectorStore.id,
     globPattern,
+    mappingFilePath,
   });
 
   // Initialize file watcher to detect additions, changes, and deletions
@@ -39,20 +41,30 @@ export default async function maintainVirtualDirectory({
 
   // Watcher event: file addition
   watcher.on("add", async (filePath: string) =>
-    onAdd({ filePath, openai, vectorStoreId: vectorStore.id })
+    onAdd({ filePath, openai, vectorStoreId: vectorStore.id, mappingFilePath })
   );
 
   // Watcher event: file change
   watcher.on("change", async (filePath: string) =>
-    onChange({ filePath, openai, vectorStoreId: vectorStore.id })
+    onChange({
+      filePath,
+      openai,
+      vectorStoreId: vectorStore.id,
+      mappingFilePath,
+    })
   );
 
   // Watcher event: file deletion
   watcher.on("unlink", (filePath: string) =>
-    onDelete({ filePath, openai, vectorStoreId: vectorStore.id })
+    onDelete({
+      filePath,
+      openai,
+      vectorStoreId: vectorStore.id,
+      mappingFilePath,
+    })
   );
 
-  console.log(`Watching files matching ${globPattern} in ${sourceDir}`);
+  console.log(chalk.blue("\nFiles successfully synced"));
 
   return { watcher, vectorStoreId: vectorStore.id };
 }

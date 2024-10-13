@@ -1,19 +1,38 @@
-let loadingInterval: NodeJS.Timeout;
+// cliUtils.ts
 
-export function startLoadingAnimation(message: string) {
-  process.stdout.write(`${message}`);
+export function stopLoadingAnimation(timeout: NodeJS.Timeout) {
+  clearInterval(timeout);
+  process.stdout.write("\n");
+}
+
+export function startLoadingAnimation(message: string, interval: number = 500) {
+  process.stdout.write("\n" + `${message}`);
   let dots = 0;
-  loadingInterval = setInterval(() => {
+  let timeout: NodeJS.Timeout;
+  timeout = setInterval(() => {
     process.stdout.write("."); // Add dot
     dots++;
     if (dots === 3) {
       dots = 0;
       process.stdout.write("\r" + message); // Reset to message state
     }
-  }, 500); // change this interval as needed
+  }, interval);
+
+  return timeout;
 }
 
-export function stopLoadingAnimation() {
-  clearInterval(loadingInterval);
-  process.stdout.write("\r"); // Clear the loading line
+export async function animate<T>(
+  callback: () => Promise<T>,
+  message: string,
+  interval?: number
+): Promise<T> {
+  const timeout = startLoadingAnimation(message, interval);
+
+  try {
+    // Execute the provided callback function and return its result
+    const result = await callback();
+    return result; // Return the callback's result
+  } finally {
+    stopLoadingAnimation(timeout);
+  }
 }

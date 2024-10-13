@@ -46,6 +46,40 @@ def data_processor(data):
 - Utilize industry best practices for error handling and performance optimization where relevant.
 `;
 
+export type DefaultConfig = typeof defaultConfig;
+
+export interface FileSyncConfig {
+  sourceDir: string;
+  globPattern: string;
+}
+
+export interface fileGenerationConfig {
+  outDir: string;
+}
+
+export interface AssistantConfig {
+  name: string;
+  description: string;
+  instructions: string;
+  model: OpenAI.ChatModel;
+  generateFiles?: fileGenerationConfig | false;
+  ignorePatterns?: string[];
+}
+
+export interface Config {
+  fileSync: FileSyncConfig;
+  assistant: AssistantConfig;
+}
+
+export interface PartialFileSyncConfig {
+  sourceDir: string;
+  globPattern?: string;
+}
+export type PartialAssistantConfig = Partial<AssistantConfig>;
+export interface PartialConfig {
+  fileSync: PartialFileSyncConfig;
+  assistant?: PartialAssistantConfig;
+}
 const defaultConfig = {
   assistant: {
     name: "programming assistant",
@@ -53,13 +87,12 @@ const defaultConfig = {
     instructions: defaultAssistantInstructions,
     model: "gpt-4o" as OpenAI.ChatModel,
     generateFiles: false as false,
+    ignorePatterns: [],
   },
   fileSync: {
     globPattern:
       "**/*.{c,cpp,cs,css,doc,docx,go,html,java,js,json,md,pdf,php,pptx,py,rb,sh,tex,ts,txt}",
   },
 };
-
-export type DefaultConfig = typeof defaultConfig;
 
 export default defaultConfig;
